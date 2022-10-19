@@ -1,4 +1,6 @@
 import numpy as np
+import torch as th
+from torch.nn.functional import interpolate
 from pathlib import Path
 import os
 import time
@@ -45,40 +47,40 @@ def load_np_image(preprocessed_image_path: Path) -> np.array:
     ## load image
     preprocessed_image_sitk = sitk.ReadImage(str(preprocessed_image_path))
     preprocessed_image_np = sitk.GetArrayFromImage(preprocessed_image_sitk)
+
     return preprocessed_image_np
 
 
 def cropping(image: np.array, axial_size: int = 90, central_crop_along_z: bool = True):
     init_shape = image.shape
-    cropped_image = image
+    cropped_image = th.tensor(image)
+    imarray = cropped_image.unsqueeze(0)
+    imarray = interpolate(imarray, size=(218,182),  mode='bilinear')
+    
+    cropped_image = np.array(imarray.squeeze(0))
     if axial_size is not None:
         cropped_image = cropped_image[:,
-                        init_shape[1] // 2 - axial_size // 2:init_shape[1] // 2 + axial_size // 2,
-                        init_shape[2] // 2 - axial_size // 2:init_shape[2] // 2 + axial_size // 2]
+                        218 // 2 - 208 // 2:218// 2 + 208 // 2,
+                        182 // 2 - 160 // 2:182// 2 + 160 // 2,
+                        ]
     if central_crop_along_z:
         cropped_image = cropped_image[30:60, ...]
-
+    print(cropped_image.shape)
     return cropped_image
 
 
-def save_np(image_np, preprocessed_image_path):
-    # preprocessed_image_path = preprocessed_image_path[:preprocessed_image_path.rfind(".")]
-    preprocessed_image_path = str(preprocessed_image_path).replace(".nii.gz", "")
-
-    data_dict = {"image": image_np}
-    np.savez_compressed(preprocessed_image_path, data_dict) # saving into .npz
 
 def save_2d(image_np, preprocessed_image_path):
     # preprocessed_image_path = str(preprocessed_image_path)[:str(preprocessed_image_path).rfind(".")]
     new_preprocessed_image_path = str(preprocessed_image_path).replace(".nii.gz", "")
     for slice in range(image_np.shape[0]):
         Image.fromarray(image_np[slice]).save(new_preprocessed_image_path + f"_slice{slice}.tiff")
+        print(f'saved to {new_preprocessed_image_path + f"_slice{slice}.tiff"}')
 
 
 def remove_nii_files(path: Path):
     for file in path.parent.glob('**/*.nii*'):
         file.unlink()
-
 
 def main():
     total_start = time.time()
@@ -90,6 +92,7 @@ def main():
     # subjects_list = [subject_folder.name for subject_folder in subject_folder_list]
     nb_subjects = len(subject_folder_list)
     nb_images = 0
+    #subject_folder_list=(subject_folder_list[392:])
     for subject_nb, subject_folder in enumerate(subject_folder_list):
         subject_image_files = sorted(subject_folder.glob("**/*.nii"))
         subject_image_files_unique = get_unique_image_file(subject_image_files)
@@ -109,6 +112,7 @@ def main():
             try:
                 preprocessed_image_path_fsl = run_fsl_processing(image_path, preprocessed_image_path, config["reference_atlas_location"])
                 preprocessed_image_np = load_np_image(preprocessed_image_path_fsl)
+                print(preprocessed_image_np.shape)
             except:
                 with open('load_error_list.txt', 'a') as the_file:
                     the_file.write(f'{str(image_path)}\n')
@@ -132,7 +136,7 @@ def main():
 
 
     print(f'Total processing time: {datetime.timedelta(seconds=time.time() - total_start)}')
-
-
-if __name__ == "__main__":
+    
+    
+if __name__ == '__main__':
     main()
